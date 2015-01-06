@@ -15,37 +15,23 @@
   {:authors ["Jozef Wagner"]}
   (:api dunaj)
   (:require
-   [dunaj.host :refer
-    [Class class? set! keyword->class class-instance?]]
-   [dunaj.feature :refer
-    [IMeta IPersistentMeta assoc-meta meta meta-ref]]
-   [dunaj.host.batch :refer [batch-manager]]
-   [dunaj.host.array :refer [array-manager array]]
+   [dunaj.boolean :refer [xor]]
+   [dunaj.string :as ds]
+   [dunaj.identifier :refer [mname]]
    [dunaj.namespace :as dn :refer [publics]]
-   [dunaj.state.basic :refer [unsynchronized-reference]]
-   [dunaj.set :refer [union]]
-   [dunaj.coll.lazy-seq-map :refer [lazy-seq->map]]
+   [dunaj.state.var :refer [find-var]]
    [dunaj.coll.recipe :refer [concat*]]
-   [dunaj.coll.util :refer
-    [prewalk-replace unpacked prewalk]]
+   [dunaj.coll.util :refer [prewalk-replace unpacked prewalk]]
+   [dunaj.macro :refer [macro?]]
    [dunaj.format.helper :refer [string-to-batch! string-cat-batch!]]
    [dunaj.format.clj :refer [pretty-clj]]
    [dunaj.resource.host :refer [coll-reader coll-writer]]
-   [dunaj.format.asciidoc :refer [h2 h3 h4 h5 convert asciidoc]]))
+   [dunaj.format.asciidoc :refer [h2 h3 convert asciidoc pass-html]]))
 
 
 ;;;; Implementation details
 
 (warn-on-reflection!)
-
-(defn ^:private mname :- (Maybe String)
-  "Returns name of `_x_`, or nil if `_x_` is nil."
-  [x :- (Maybe INamed)]
-  (if (named? x) (name x) x))
-
-(defn ^:private pass-html
-  [& xs]
-  (->str "++++\n" (str (print html xs)) "\n++++"))
 
 (defn ^:private protocol-var? :- Boolean
   "Returns true is var `_v_` holds a public protocol."
@@ -80,9 +66,8 @@
 
 (defn api-var?
   [v]
-  (and (:added (meta v))
-       (not (:protocol (meta v)))
-       (not (:defprotocol (meta v)))))
+  (let [m (meta v)]
+    (and (:added m) (not (:protocol m)) (not (:defprotocol m)))))
 
 (defn api-groups
   [ns-sym]
@@ -138,11 +123,11 @@
 (def ex-ids (atom 0))
 
 (defn show-ex
-  ([exx] (show-ex exx ""))
-  ([exx s]
+  ([exs] (show-ex exs ""))
+  ([exs s]
    (when-not (empty? exs)
      (let [i (alter! ex-ids inc)
-           sf (->str "[source,clojure,linenums]\n--\n" % "\n--")]
+           sf #(->str "[source,clojure,linenums]\n--\n" % "\n--")]
        (->str
         "++++\n<input type=\"checkbox\" class=\"dd-example-check\""
         " id=\"toggle-" i
@@ -208,7 +193,7 @@
   [sym]
   (if (red? sym)
     sym
-    (if-let [i (index-of (name sym) "__" )]
+    (if-let [i (ds/index-of (name sym) "__" )]
       (symbol (slice (name sym) 0 i))
       sym)))
 
@@ -216,19 +201,17 @@
   [config v]
   (when (and (not (macro? v)) (or (type? @v) (record? @v)))
     (let [ff #(dunaj.poly/extends? % @v)
-          ns-protocols (map dunaj.state/deref (protocols ns-sym))
+          ns-protocols #(map dunaj.state/deref (protocols %))
           protocols (mapcat ns-protocols (ns-list config))
-          ax (sort-by name (map :var (filter ff protocols)))]
+          x (sort-by name (map :var (filter ff protocols)))]
       (if (record? @v)
         (remove #{#'dunaj.compare/IHash #'dunaj.compare/IEquiv
-                  #'dunaj.coll/IAssociative, #'dunaj.coll/ICounted,
-                  #'dunaj.coll/IEmptyable, #'dunaj.feature/IMeta,
-                  #'dunaj.coll/IPersistentCollection,
-                  #'dunaj.coll/IPersistentMap,
-                  #'dunaj.feature/IPersistentMeta,
-                  #'dunaj.coll/ISeqable} ax)
-        (remove #{#'dunaj.compare/IHash #'dunaj.compare/IEquiv}
-                ax)))))
+                  #'dunaj.coll/IAssociative #'dunaj.coll/ICounted,
+                  #'dunaj.coll/IEmptyable #'dunaj.feature/IMeta,
+                  #'dunaj.coll/IPersistentCollection
+                  #'dunaj.coll/IPersistentMap #'dunaj.coll/ISeqable,
+                  #'dunaj.feature/IPersistentMeta} x)
+        (remove #{#'dunaj.compare/IHash #'dunaj.compare/IEquiv} x)))))
 
 (defn print-type-extenders
   [config v]
@@ -252,7 +235,7 @@
 (defn var-doc
   "Returns asciidoc code for var documentation."
   [config spi? ns-sym v]
-  (let [ppp #(str (print-one pretty-clj %))
+  (let [ppp #(str (print pretty-clj %))
         ap #(->str \` (ppp %) \`)
         apm #(if (single? %)
                (->str " `pass:[" (ppp %) "]`")
@@ -343,7 +326,7 @@
                  " RETURNS TRANSDUCER`\n"
                  "[.dd-usage]\nUsage: ::\n"
                  (ad-escape (interpose "\n" (map apa al))))
-      :else (apply str "[.dd-usage]\nUsage: ::\n"
+      :else (apply ->str "[.dd-usage]\nUsage: ::\n"
                    (ad-escape (interpose "\n" (map apa al)))))
      (when (and f? (:qtsig m))
        (let [ts (strip-ns (:qtsig m))]
@@ -365,11 +348,6 @@
      (when-not (empty? see)
        (->str "[.see]\nicon:share[title=\"See also\"]"
               " See also: " (str (interpose ", " (map sf see)))))]))
-
-
-
-
-
 
 ;;; Nav
 
@@ -399,7 +377,7 @@
         cr (when (referred? config v) [:dd-referred])]
     [:div :dd-nav-ns-var
      [:a {:href (->str "#" (munge (name v)))}
-      [:i {:class (concat cr c)}]
+      [:i {:class (vec (concat cr c))}]
       [:span {:class (conj cr :dd-nav-ns-var-text)}
        (html-munge (name v))]]]))
 
@@ -407,7 +385,7 @@
   "Returns nav code for one var group"
   [config group-name groups-map]
   (let [vars (sort-by name (get groups-map group-name nil))
-        x (mapcat #(nav-ns-var config %) vars)]
+        x (map #(nav-ns-var config %) vars)]
     (if (= "Primary" group-name)
       x
       (cons [:div :dd-nav-ns-group
@@ -419,7 +397,7 @@
   [config group-names groups-map]
   (let [vars (concat* (vals (apply dissoc groups-map group-names)))
         x (when-not (empty? vars)
-            (mapcat #(nav-ns-var config %) (sort-by name vars)))]
+            (map #(nav-ns-var config %) (sort-by name vars)))]
     (cond
      (empty? x) nil
      ;; do not put "Other" label when no categories are defined
@@ -433,12 +411,13 @@
   (let [group-names (map #(first (provide-sequential %))
                          (:categories (dn/meta ns-sym)))
         groups-map (api-groups ns-sym)]
-    (concat
-     [[:div :dd-nav-ns-header
-       [:a {:href "#dd-top"} (mname ns-sym)]]]
-     (mapcat #(group-ns-nav config % groups-map) group-names)
-     (missing-nav config group-names groups-map)
-     [[:br]])))
+    (vec (concat
+          [:div :dd-over
+           [:div :dd-nav-ns-header
+            [:a {:href "#dd-top"} (mname ns-sym)]]]
+          (mapcat #(group-ns-nav config % groups-map) group-names)
+          (missing-nav config group-names groups-map)
+          [[:br]]))))
 
 (defn ns-nav-proto
   "Returns nav code for one protocol"
@@ -452,7 +431,8 @@
                  (html-munge m)]]])
         pn [:div {:class [:dd-nav-ns-var :dd-nav-ns-proto]}
             [:a {:href (->str "#" (munge (mname (:var @v))))}
-             [:i {:class (concat cr [:fa :fa-fw :fa-plug :dd-mmsh])}]
+             [:i {:class
+                  (vec (concat cr [:fa :fa-fw :fa-plug :dd-mmsh]))}]
              [:span {:class (conj cr :dd-nav-ns-var-text)}
               (html-munge (mname (:var @v)))]]]]
     (cons pn (map pmf (map name (clojure.core/keys (:sigs @v)))))))
@@ -461,10 +441,11 @@
   "Returns nav code for ns spi"
   [config ns-sym]
   (let [pl (sort-by #(mname (:var (deref %))) (protocols ns-sym))]
-    (concat [[:div :dd-nav-ns-header
-              [:a {:href "#dd-top"} (mname ns-sym)]]]
-            (mapcat #(ns-nav-proto config %) pf pl)
-            [[:br]])))
+    (vec (concat [:div :dd-over
+                  [:div :dd-nav-ns-header
+                   [:a {:href "#dd-top"} (mname ns-sym)]]]
+                 (mapcat #(ns-nav-proto config %) pl)
+                 [[:br]]))))
 
 (defn ^:private side-ns-list :- []
   "Returns collection recipe of namespace symbols sorted
@@ -472,7 +453,7 @@
   [ns-list :- []]
   (let [lf (fn [[before cur]]
               (let [nc (name cur)
-                    i (last-index-of nc \.)
+                    i (ds/last-index-of nc \.)
                     prefix (when i (slice nc 0 i))
                     cp (count prefix)]
                 (if (or (nil? prefix)
@@ -488,7 +469,7 @@
   (let [n (name ns-sym)
         nh (->str n (if spi? ".spi.html"  ".api.html"))
         indent (count (filter #(= \. %) n))
-        ln (slice n (or (last-index-of n \.) 0))
+        ln (slice n (or (ds/last-index-of n \.) 0))
         aclass [:dd-nav-doc-ns (->str "dd-nav-doc-item-" indent)]
         aclass (if (= ns-sym cur-ns)
                  (cons :dd-nav-doc-item-cur aclass)
@@ -503,8 +484,8 @@
 (defn ^:private side-ns-nav :- Any
   "Returns html code for doc navigation."
   [config :- {}, spi? :- Boolean, ns-sym :- Symbol]
-  (let [ff #(or (ns-vars? %) (index-of (name %) ".core"))
-        nl (ns-list config)
+  (let [ff #(or (ns-vars? %) (ds/index-of (name %) ".core"))
+        nl (ns-list config spi?)
         nl (if spi? nl (filter ff nl))
         nl (side-ns-list nl)
         x [[:div :dd-over
@@ -517,7 +498,7 @@
 
 (defn ^:private static-nav :- Any
   "Returns code for static side nav"
-  [config :- {}, ms :- [], aname :- String]
+  [config :- {}, ml :- [], aname :- String]
   (let [mf (fn [m]
              (let [aclass [:dd-nav-doc-ns :dd-nav-doc-item-0]
                    aclass (if (= aname (:name m))
@@ -561,12 +542,12 @@
 
 (defn content-header
   "Page content header, containing title and copyright."
-  ([config n] (config false n))
+  ([config n] (content-header config false n))
   ([config spi? ns-sym]
      (let [n (if (string? ns-sym) ns-sym (name ns-sym))
            ns-sym (when-not (string? ns-sym) ns-sym)
            cv (:current-version config)
-           ns-meta (dn/meta ns-sym)
+           ns-meta (when ns-sym (dn/meta ns-sym))
            pa #(->str "<span class=\"author\">" % "</span><br>")]
        [:div 'header
         [:h1 'dd-top n (when ns-sym (if spi? " SPI" " API"))]
@@ -630,21 +611,18 @@
 
 (defn list-refers
   "Returns asiidoc code listing all refers"
-  [config ns-sym]
-  ;; TODO: reimplement so that is uses refers from :refer-ns
-  (let [nl (remove #(= 'clojure.core %) (ns-list config))
-        vars-fn (fn [sym] (->> sym
-                              publics
-                              vals
-                              (filter #(referred? config %))))
-        syms (sort-by name (mapcat vars-fn nl))
-        rf #(let [sym (symbol %)]
-              (->str "`<<" (namespace sym)
-                     (if (sym-api? ns-sym sym) ".api.ad#" ".spi.ad#")
-                     (ad-munge (name %))
-                     "," (ad-escape (name %)) ">>`"))]
-    [(h2 "List of automatically referred vars")
-     (str (interpose " " (map rf syms)))]))
+  [config]
+  (let [ns-sym (:refers-ns config)
+        rf #(->str "`<<" (namespace %)
+                   (if (sym-api? ns-sym %) ".api.ad#" ".spi.ad#")
+                   (ad-munge (name %)) "," (ad-escape (name %)) ">>`")
+        x (->> (dn/refers ns-sym)
+               (map (comp symbol second))
+               (sort-by name)
+               (remove #(= "clojure.core" (namespace %))))]
+    [(h2
+      (->str "List of automatically referred vars (" (count x) ")"))
+     (str (interpose " " (map rf x)))]))
 
 (defn content
   "Returns code for ns content"
@@ -657,7 +635,7 @@
         x (concat
            [(assoc default-header
               :title (->str (name ns-sym) (if spi? " SPI" " API"))
-              :authors (:authors m)
+              :authors (:authors (dn/meta ns-sym))
               :version (:current-version config)
               :sectlinks true)
             (if spi? (first-para ds) ds)
@@ -669,7 +647,7 @@
                       group-pairs)
               (missing config ns-sym group-names groups-map))))
         x (if (= ns-sym (:core-ns config))
-            (concat x (list-refers config ns-sym))
+            (concat x (list-refers config))
             x)
         ad (str (print asciidoc (keep identity x)))]
     #_(with-scope (spit! "temp.ad" ad [:create :truncate]))
@@ -678,8 +656,8 @@
 (defn api-list-content
   "Returns rendered content for api/spi list page."
   [config spi?]
-  (let [ff #(or (ns-vars? %) (index-of (name %) ".core"))
-        nl (sort-by name (ns-list config))
+  (let [ff #(or (ns-vars? %) (ds/index-of (name %) ".core"))
+        nl (sort-by name (ns-list config spi?))
         nl (remove #(= 'clojure.core %) nl)
         nl (if spi? nl (filter ff nl))
         as (if spi? " SPI" " API")
@@ -702,6 +680,7 @@
   "Generates static page."
   ([config]
    (dored [x (:static-pages config)]
+     (println! "Generating" (:filename x) "static page")
      (gen-static config x)))
   ([config sc]
      (let [title (->str (:proj-name config) " " (:name sc))
@@ -710,7 +689,7 @@
                           :no-header-footer true
                           :noheader true)
            fp (->str (:static-path config) "/" (:filename sc) ".ad")
-           ad-inner (->str (print asciidoc [inner-header]) "\n"
+           ad-inner (->str (str (print asciidoc [inner-header])) "\n"
                            (with-scope (str (slurp fp))))
            html-inner (print (assoc convert :embedded? true) ad-inner)
            out-content
@@ -722,11 +701,12 @@
                 (static-nav
                  config (get config (:menu sc)) (:section sc))])
              [:section 'dd-content
-              [:div :dd-over
+              [:div {:class :dd-over :tabindex -1 :id 'dd-focus}
                ;; original asciidoc header is hidden with css
                (content-header
                 config (->str (:proj-name config) " " (:name sc)))
-               (str html-inner)]]])
+               (str html-inner)]]]
+            [:script "window.onload = function() {document.getElementById('dd-focus').focus();}"])
            ad-out (print asciidoc out-header out-content)
            html-out (print convert ad-out)
            path (->str (:target-path config) "/" (:filename sc))
@@ -752,11 +732,12 @@
            (static-nav
             config (:doc-menu config) (if spi? "SPI" "API"))]
           [:section 'dd-content
-           [:div :dd-over
+           [:div {:class :dd-over :tabindex -1 :id 'dd-focus}
             ;; original asciidoc header is hidden with css
             (content-header
              config spi? (->str (:proj-name config) as))
-            (api-list-content config spi?)]]])
+            (api-list-content config spi?)]]]
+         [:script "window.onload = function() {document.getElementById('dd-focus').focus();}"])
         ad-out (print asciidoc out-header out-content)
         html-out (print convert ad-out)
         path (->str (:target-path config) "/" (if spi? "spi" "api"))
@@ -784,13 +765,13 @@
           [:nav 'dd-side-nav (side-ns-nav config spi? ns-sym)]
           (when (ns-vars? ns-sym)
             [:nav 'dd-ns-nav
-             [:div :dd-over
-              ((if spi? ns-nav-spi ns-nav-api config ns-sym))]])
+             ((if spi? ns-nav-spi ns-nav-api) config ns-sym)])
           [:section 'dd-content
-           [:div :dd-over
+           [:div {:class :dd-over :tabindex -1 :id 'dd-focus}
             ;; original asciidoc header is hidden with css
             (content-header config spi? ns-sym)
-            (content config spi? ns-sym)]]])
+            (content config spi? ns-sym)]]]
+         [:script "window.onload = function() {document.getElementById('dd-focus').focus();}"])
         ad-out (print asciidoc out-header out-content)
         html-out (print convert ad-out)
         path (->str (:target-path config) "/" ns-name
@@ -808,7 +789,6 @@
 
 (defn gen-doc
   "Generates documentation based on `_config_` map."
-  {:added "1.0"}
   ([config]
    (gen-static config)
    (gen-doc config false)
@@ -817,6 +797,7 @@
    (if (boolean? spi?)
      (time
       (let [as (if spi? "SPI" "API")]
+        (println! "Generating" as "list")
         (gen-api-list config spi?)
         (dored [ns-sym (ns-list config spi?)]
           (println! "Generating" as "docs for:" (name ns-sym))
@@ -826,7 +807,3 @@
            (gen-api config false spi?)))))
   ([config spi? ns-sym]
    (gen-api config spi? ns-sym)))
-
-;; TODO: javascript to focus on content
-;; TODO: fix top menu highlight
-;; TODO: send! vs send, consider thread, daemon, future

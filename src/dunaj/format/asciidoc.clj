@@ -11,88 +11,85 @@
 ;; You must not remove this notice, or any other, from this software.
 
 (ns dunaj.format.asciidoc
-  "Asciidoc printer. Think hiccup for asciidoc."
+  "Asciidoc printer. Rudimentary features only."
   {:authors ["Jozef Wagner"]}
-  (:api dunaj)
-  (:require 
-   [dunaj.host :refer
-    [Class class? set! keyword->class class-instance?]]
-   [dunaj.format.helper :refer [string-to-batch! string-cat-batch!]]
-   [dunaj.format.printer :refer
-    [IContainerPrinterMachine -printer-to-type
-     IPrinterMachineFactory printer-engine -indent
-     invalid-item-handler print-single-element!
-     print-element! print-batch! print-finish! prev-indent
-     print-single-batch! print-batch-escaped! print!
-     IIndentedMachine next-indent base-indent]]
-   [dunaj.resource.host :refer [coll-reader coll-writer]]))
+  (:api dunaj :exclude [print! section quote])
+  (:require [dunaj.host :refer [keyword->class]]
+            [dunaj.identifier :refer [mname]]
+            [dunaj.format :refer [IPrinterFactory]]
+            [dunaj.format.helper :refer [string-to-batch!]]
+            [dunaj.format.printer :refer
+             [IContainerPrinterMachine IPrinterMachineFactory
+              printer-engine print!]]
+            [dunaj.resource.host :refer [coll-reader coll-writer]]))
 
 
 ;;;; Implementation details
 
 (warn-on-reflection!)
 
-;; block/inline
-;; styles, options, functions
+(defn ^:private attr->str
+  [k v]
+  (when v
+    (let [v (provide-sequential v)
+          vs (interpose \space (map mname v))]
+      (->str (mname k) "=\"" (str vs) "\""))))
 
-;; (list foo bar) -> eval normal clj function
-
-;; "string" -> renders contents as it is -> string
-;; :keyword -> attribute reference -> {keyword}
-
-
-;;;; Normalized syntax
-;; {
-;; :attributes [
-;;   :positional-attribute
-;;   :options [:opt1 :opt2 :opt3]
-;;   [:author []]
-;;   [:foo-attribute] -> unset the attribute
-;;   [:foo-attribute nil] -> unset the attribute
-;;   [:foo-attribute false] -> unset the attribute
-;; ]
-;; }
+(defn ^:private m->str
+  ([m] (m->str m nil))
+  ([m ex]
+     (let [ms (map attr->str (unpacked (apply dissoc m ex)))]
+       (if (empty? ms)
+         "[]"
+         (->str "[" (str (interpose \, ms)) "]")))))
 
 (deftype AdTopContainer
   "Top level printer container for Asciidoc printer."
   [config state coll]
   IContainerPrinterMachine
   (-children [this parents]
-    ;;(clojure.core/println "top is" coll)
+    ;;(println! "top is" coll)
     (if (map? coll) [(assoc coll ::root true)] coll))
   (-print-before! [this bm batch parents] nil)
   (-print-after! [this bm batch parents] nil)
   (-print-between! [this bm batch parents]
     (print! batch bm state \newline)))
 
-(deftype AdHeaderContainer
-  "Header printer container for Asciidoc printer."
+(defn ^:private print-icon
+  [config state m]
+  (string-to-batch!
+   (->str "icon:" (name (:style m)) (m->str m #{:style :type}))))
+
+(deftype AdInlineContainer
+  "printer container for Asciidoc printer."
+  {:predicate 'inline-container?}
   [config state coll]
   IContainerPrinterMachine
   (-children [this parents]
     (provide-sequential (:content coll)))
+  (-print-before! [this bm batch parents])
+  (-print-after! [this bm batch parents]
+    (print! batch bm state \newline))
+  (-print-between! [this bm batch parents]
+    (print! batch bm state \space)))
+
+(deftype AdHeaderContainer
+  "Header printer container for Asciidoc printer."
+  [config state coll]
+  IContainerPrinterMachine
+  (-children [this parents] (provide-sequential (:content coll)))
   (-print-before! [this bm batch parents]
-    ;; attributes
-    ;; id="d"
-    ;; style="dd" ???
-    ;; role=["asdasd", "asdasd"]
-    ;; options=["asdasdsad","asdasdsad"]
     (let [title (->str "= " (name (:title coll)) \newline)
           authors (when-let [authors (:authors coll)]
                     (let [authors (provide-sequential authors)]
-                      (->str (str (interpose "; "
-                                             (map name authors)))
+                      (->str (str (interpose "; " (map name authors)))
                              \newline)))
-          version (when-let [ver (:version coll)]
-                    (->str ver \newline))
+          version (when-let [v (:version coll)] (->str v \newline))
           am (dissoc coll :title :authors :type :version)
-          amf (fn [[k v]] (->str ":" (name k)
-                                (if v ": " "!:")
-                                (if v (if (named? v) (name v) v) "")
-                                \newline))
+          amf (fn [[k v]] (->str ":" (name k) (if v ": " "!:")
+                                (if v (mname v) "") \newline))
           attrs (concat [title authors version] (map amf am))
-          attrs (seq (remove nil? attrs))
-          attrs (string-to-batch! (str attrs))]
+          attrs (string-to-batch! (str (remove nil? attrs)))]
       (print! batch bm state attrs)))
   (-print-after! [this bm batch parents])
   (-print-between! [this bm batch parents]
@@ -102,37 +99,17 @@
   "Block printer container for Asciidoc printer."
   [config state coll]
   IContainerPrinterMachine
-  (-children [this parents]
-    (provide-sequential (:content coll)))
+  (-children [this parents] (provide-sequential (:content coll)))
   (-print-before! [this bm batch parents]
-    ;; attributes
-    ;; id="d"
-    ;; style="dd" ???
-    ;; role=["asdasd", "asdasd"]
-    ;; options=["asdasdsad","asdasdsad"]
-    ;; positional
-    ;;(clojure.core/println "printing" coll)
-    (let [style (when-let [style (:style coll)]
-                  (name style))
+    (let [style (when-let [style (:style coll)] (name style))
           pos (when-let [pos (:pos coll)]
                 (let [pos (provide-sequential pos)]
                   (str (interpose \, (map name pos)))))
-          id (when-let [id (:id coll)]
-               (->str "id=\"" (name id) "\""))
-          title (when-let [title (:title coll)]
-                  (->str "title=\"" (name title) "\""))
-          role (when-let [roles (:roles coll)]
-                 (let [roles (provide-sequential roles)]
-                   (->str "role=\""
-                          (str (interpose " " (map name roles)))
-                          "\"")))
-          options (when-let [options (:options coll)]
-                    (let [options (provide-sequential options)]
-                      (->str "options=\""
-                             (str (interpose \space (map name options)))
-                             "\"")))
-          attrs [style pos title id role options]
-          attrs (seq (remove nil? attrs))
+          title (attr->str :title (:title coll))
+          id (attr->str :id (:id coll))
+          role (attr->str :role (:roles coll))
+          os (attr->str :options (:options coll))
+          attrs (seq (remove nil? [style pos title id role os]))
           attrs (if (empty? attrs)
                   ""
                   (->str "[" (str (interpose \, attrs)) "]\n"))
@@ -152,66 +129,18 @@
   (-print-before! [this bm batch parents]
     (let [levels (str (repeat (:level coll) \=))
           title (->str levels " " (:title coll) \newline)
-          style (when-let [style (:style coll)]
-                  (->str "[" (name style) "]\n"))
-          id (when-let [id (:id coll)]
-               (->str "[id=\"" (name id) "\"]\n"))
-          role (when-let [roles (:roles coll)]
-                 (let [roles (provide-sequential roles)]
-                   (->str "[role=\""
-                          (str (interpose " " (map name roles)))
-                          "\"]\n")))
-          attrs [style role id title]
-          attrs (str (remove nil? attrs))
-          attrs (string-to-batch! attrs)]
+          style (when-let [style (:style coll)] (name style))
+          role (attr->str :role (:roles coll))
+          id (attr->str :id (:id coll))
+          attrs (seq (remove nil? [style role id]))
+          attrs (if (empty? attrs)
+                  ""
+                  (->str "[" (str (interpose \, attrs)) "]\n"))
+          attrs (string-to-batch! (->str attrs title))]
       (print! batch bm state attrs)))
   (-print-after! [this bm batch parents])
   (-print-between! [this bm batch parents]
     (print! batch bm state \newline)))
-
-(defn pop-delim!
-  [state ordered?]
-  (let [s @state
-        ns (update s (if ordered? :ordered :unordered) pop)
-        ns (update ns :delim pop)]
-    (reset! state ns)
-    nil))
-
-(defn ^:private oname
-  [x]
-  (if (named? x) (name x) x))
-
-(defn ^:private attr->str
-  [k v]
-  (let [vs (provide-sequential v)]
-    (->str (oname k) "=\"" (str (interpose \space (map oname vs))) "\"")))
-
-(defn ^:private m->str
-  ([m] (m->str m nil))
-  ([m ex]
-     (let [ms (map attr->str (unpacked (apply dissoc m ex)))]
-       (when-not (empty? ms)
-         (->str "[" (str (interpose \, ms)) "]")))))
-
-(defn ^:private print-icon
-  [config state m]
-  (string-to-batch!
-   (->str "icon:"
-          (name (:style m))
-          (or (m->str m #{:style :type}) "[]"))))
-
-(deftype AdInlineContainer
-  "printer container for Asciidoc printer."
-  {:predicate 'inline-container?}
-  [config state coll]
-  IContainerPrinterMachine
-  (-children [this parents]
-    (provide-sequential (:content coll)))
-  (-print-before! [this bm batch parents])
-  (-print-after! [this bm batch parents]
-    (print! batch bm state \newline))
-  (-print-between! [this bm batch parents]
-    (print! batch bm state \space)))
 
 (defprotocol IAdPrinter
   (-print-ad!
@@ -227,13 +156,8 @@
       (print! batch bm state (string-to-batch! this) \newline)))
   clojure.lang.IPersistentVector
   (-print-ad! [this config state bm batch parents]
-    (let [m {:type :block
-             :style (first this)
-             :content (next this)}]
+    (let [m {:type :block, :style (first this), :content (next this)}]
       (-print-ad! m config state bm batch parents)))
-  clojure.lang.IPersistentSet
-  (-print-ad! [this config state bm batch parents]
-    )
   clojure.lang.IPersistentMap
   (-print-ad! [this config state bm batch parents]
     (condp identical? (:type this)
@@ -242,46 +166,39 @@
       :section (->AdSectionContainer config state this)
       :inline (->AdInlineContainer config state this)
       :icon (print-icon config state this)
-      (->AdBlockContainer config state this)))
-  clojure.lang.Keyword
-  (-print-ad! [this config state bm batch parents]
-    ))
+      (->AdBlockContainer config state this))))
 
 (defrecord AsciidocPrinterFactory
   "Asciidoc Printer Factory record."
   []
   IPrinterMachineFactory
-  (-printer-config [this]
-    {})
-  (-printer-from-type [this]
-    (keyword->class :object))
-  (-printer-to-type [this]
-    (keyword->class :char))
+  (-printer-config [this] {})
+  (-printer-from-type [this] (keyword->class :object))
+  (-printer-to-type [this] (keyword->class :char))
   (-top-container [this config state coll]
     (->AdTopContainer config state coll))
   (-dispatch-printer [this config state item bm batch parents]
-    ;;(clojure.core/println "dispatching" item)
+    ;;(println! "dispatching" item)
     (-print-ad! item config state bm batch parents))
   IPrinterFactory
-  (-print [this]
-    (printer-engine this))
-  (-print [this coll]
-    (printer-engine this coll)))
+  (-print [this] (printer-engine this))
+  (-print [this coll] (printer-engine this coll)))
+
+;;; Converter
 
 (defn ^:private ad->html*
   [coll o]
   (let [[wr ocoll] (coll-writer)
+        cr (coll-reader coll)
         ad (org.asciidoctor.Asciidoctor$Factory/create)]
-    (.render
-     ad (coll-reader coll) ^java.io.Writer wr ^java.util.Map o)
+    (.render ad cr ^java.io.Writer wr ^java.util.Map o)
     (.close ^java.io.Writer wr)
     ocoll))
-  
+
 (defn ^:private ad->html
   [coll o]
-  (let [input (str coll)
-        ad (org.asciidoctor.Asciidoctor$Factory/create)]
-    (.render ad input ^java.util.Map o)))
+  (let [ad (org.asciidoctor.Asciidoctor$Factory/create)]
+    (.render ad (str coll) ^java.util.Map o)))
 
 (defn get-safe-mode
   [k]
@@ -290,7 +207,7 @@
     :safe org.asciidoctor.SafeMode/SAFE
     :server org.asciidoctor.SafeMode/SERVER
     :secure org.asciidoctor.SafeMode/SECURE))
-  
+
 (defrecord ConverterPrinterFactory
   "Asciidoc converter Printer Factory record."
   [attributes embedded? safe-mode backend doctype base-dir opts
@@ -305,14 +222,6 @@
           o (if attributes (assoc o "attributes" attributes) o)
           o (merge opts o)]
       (if fallback? (ad->html coll o) (ad->html* coll o)))))
-
-(defn ^:private provide-vec
-  [x]
-  (if (vector? x) x [x]))
-
-(defn ^:private provide-ovec
-  [x]
-  (if (vector? x) x [{} x]))
 
 
 ;;;; Public API
@@ -416,22 +325,16 @@
   (let [m (if (single? optmap) (first optmap) (apply ->map optmap))]
     (merge m {:type :icon :style name})))
 
-;; image
-;; marked
-;; include file
-;; labelled
-;; table
-;; link
-;; anchors, cross reference
-;; callouts
-
 (def hr "'''")
 
 (def page-break "<<<")
 
+(defn pass-html
+  [& xs]
+  (->str "++++\n" (str (print html xs)) "\n++++"))
+
 (def asciidoc
   "Asciidoc formatter factory."
-  {:added v1}
   (->AsciidocPrinterFactory))
 
 (def convert
