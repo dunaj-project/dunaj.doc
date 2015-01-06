@@ -1,6 +1,12 @@
 = dunaj.doc
 
-Dunaj documentation tools.
+Dunaj documentation facilities.
+
+See https://github.com/dunaj-project/dunaj-project.gen[dunaj-project.gen] for usage.
+
+== TODO
+
+* Examples, documentation
 
 == License
 

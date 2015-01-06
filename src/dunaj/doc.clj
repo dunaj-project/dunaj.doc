@@ -34,7 +34,7 @@
 (warn-on-reflection!)
 
 (defn ^:private protocol-var? :- Boolean
-  "Returns true is var `_v_` holds a public protocol."
+  "Returns `true` is var `_v_` holds a public protocol."
   [v :- Var]
   (boolean (and (:added (meta v)) (not (macro? v))
                 (:defprotocol (meta v))
@@ -236,23 +236,24 @@
   "Returns asciidoc code for var documentation."
   [config spi? ns-sym v]
   (let [ppp #(str (print pretty-clj %))
-        ap #(->str \` (ppp %) \`)
+        pps #(str (print-one pretty-clj %))
+        ap #(->str \` (pps %) \`)
         apm #(if (single? %)
-               (->str " `pass:[" (ppp %) "]`")
-               (->str " `(pass:[" (ppp (first %)) "] _"
+               (->str " `(pass:[" (ppp %) "])`")
+               (->str " `(pass:[" (pps (first %)) "] _"
                       (ppp (map pretty-gensym (rest %))) "_)`"))
         apa #(if (single? %)
-               (->str "* `pass:[" (ppp %) "]`")
-               (->str "* `(pass:[" (ppp (first %)) "] _"
+               (->str "* `(pass:[" (ppp %) "])`")
+               (->str "* `(pass:[" (pps (first %)) "] _"
                       (ppp (map pretty-gensym (rest %))) "_)`"))
-        apfx #(ds/replace (ppp %) "]" "&#93;")
+        apfx #(ds/replace (pps %) "]" "&#93;")
         apf #(if (single? %)
                (->str "* `() → pass:["
-                      (ds/replace (ppp (first %)) "]" "&#93;") "]`")
+                      (ds/replace (pps (first %)) "]" "&#93;") "]`")
                (->str "* `(pass:["
                       (str (interpose " ⨯ " (map apfx (rest %))))
                       "]) → pass:["
-                      (ds/replace (ppp (first %)) "]" "&#93;") "]`"))
+                      (ds/replace (pps (first %)) "]" "&#93;") "]`"))
         apu #(->str "`<<" (ad-munge (mname %)) "," (mname %) ">>`")
         nv (name v)
         m (meta v)
@@ -389,7 +390,8 @@
     (if (= "Primary" group-name)
       x
       (cons [:div :dd-nav-ns-group
-             [:a {:href (munge group-name)} group-name]]
+             [:a {:href (->str "#" (munge group-name))}
+              group-name]]
             x))))
 
 (defn missing-nav
