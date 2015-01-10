@@ -100,8 +100,9 @@
   (str (interpose "\n" (take-while #(not (empty? %)) (lines s)))))
 
 (defn ns-examples
-  [ns-sym]
-  (let [fname (->str "examples/" (name ns-sym) ".edn")]
+  [config ns-sym]
+  (let [fname (->str (:examples-path config) "/"
+                     (name ns-sym) ".edn")]
     (try (with-scope (first (parse edn (slurp fname))))
          (catch java.lang.Exception e nil))))
 
@@ -111,13 +112,13 @@
     (boolean (some #(identical? v %) (seq (vals (dn/refers rns)))))))
 
 (defn var-example
-  [var]
-  (when-let [ex (ns-examples (symbol (namespace var)))]
+  [config var]
+  (when-let [ex (ns-examples config (symbol (namespace var)))]
     (provide-sequential (get ex (symbol (name var))))))
 
 (defn ns-example
-  [ns-sym]
-  (when-let [ex (ns-examples ns-sym)]
+  [config ns-sym]
+  (when-let [ex (ns-examples config ns-sym)]
     (provide-sequential (get ex nil))))
 
 (def ex-ids (atom 0))
@@ -289,7 +290,7 @@
                             "," (ad-escape (name sym)) ">>`")
                      :else (->str "`<<" (ad-munge (name sym))
                                   "," (ad-escape (name sym)) ">>`"))))
-        ex (show-ex (var-example v))]
+        ex (show-ex (var-example config v))]
     [(h3 {:roles [:dd-var] :id (munge (name v))}
          (html-munge (name v)))
      (->str
@@ -641,7 +642,7 @@
               :version (:current-version config)
               :sectlinks true)
             (if spi? (first-para ds) ds)
-            (show-ex (ns-example ns-sym) "usage ")]
+            (show-ex (ns-example config ns-sym) "usage ")]
            (if spi?
              (mapcat #(proto-doc config ns-sym %) ps)
              (concat
@@ -689,7 +690,8 @@
            out-header (assoc default-header :title title)
            inner-header (assoc default-header
                           :no-header-footer true
-                          :noheader true)
+                          :noheader true
+                          :current-version (:current-version config))
            fp (->str (:static-path config) "/" (:filename sc) ".ad")
            ad-inner (->str (str (print asciidoc [inner-header])) "\n"
                            (with-scope (str (slurp fp))))
@@ -705,8 +707,9 @@
              [:section 'dd-content
               [:div {:class :dd-over :tabindex -1 :id 'dd-focus}
                ;; original asciidoc header is hidden with css
-               (content-header
-                config (->str (:proj-name config) " " (:name sc)))
+               (when (:name sc)
+                 (content-header
+                  config (->str (:proj-name config) " " (:name sc))))
                (str html-inner)]]]
             [:script "window.onload = function() {document.getElementById('dd-focus').focus();}"])
            ad-out (print asciidoc out-header out-content)
