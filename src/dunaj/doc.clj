@@ -642,7 +642,8 @@
               :version (:current-version config)
               :sectlinks true)
             (if spi? (first-para ds) ds)
-            (show-ex (ns-example config ns-sym) "usage ")]
+            (when-not spi? 
+              (show-ex (ns-example config ns-sym) "usage "))]
            (if spi?
              (mapcat #(proto-doc config ns-sym %) ps)
              (concat
