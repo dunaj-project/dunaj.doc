@@ -17,7 +17,7 @@
   (:require
    [dunaj.boolean :refer [xor]]
    [dunaj.string :as ds]
-   [dunaj.identifier :refer [mname]]
+   [dunaj.identifier :refer [named?]]
    [dunaj.namespace :as dn :refer [publics]]
    [dunaj.state.var :refer [find-var]]
    [dunaj.coll.recipe :refer [concat*]]
@@ -31,7 +31,10 @@
 
 ;;;; Implementation details
 
-(warn-on-reflection!)
+(defn ^:private mname :- (Maybe String)
+  "Returns name of `_x_`, or nil if `_x_` is `nil`."
+  [x :- (Maybe INamed)]
+  (if (named? x) (name x) x))
 
 (defn ^:private protocol-var? :- Boolean
   "Returns `true` is var `_v_` holds a public protocol."

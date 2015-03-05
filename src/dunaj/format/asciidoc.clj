@@ -15,7 +15,7 @@
   {:authors ["Jozef Wagner"]}
   (:api dunaj :exclude [print! section quote])
   (:require [dunaj.host :refer [keyword->class]]
-            [dunaj.identifier :refer [mname]]
+            [dunaj.identifier :refer [named?]]
             [dunaj.format :refer [IPrinterFactory]]
             [dunaj.format.helper :refer [string-to-batch!]]
             [dunaj.format.printer :refer
@@ -26,7 +26,10 @@
 
 ;;;; Implementation details
 
-(warn-on-reflection!)
+(defn ^:private mname :- (Maybe String)
+  "Returns name of `_x_`, or nil if `_x_` is `nil`."
+  [x :- (Maybe INamed)]
+  (if (named? x) (name x) x))
 
 (defn ^:private attr->str
   [k v]
@@ -145,7 +148,7 @@
 (defprotocol IAdPrinter
   (-print-ad!
     "Returns result or printing `this` as an asciidoc. Return value
-     follows IPrinterMachineFactory/-dispatch-printer rules."
+    follows IPrinterMachineFactory/-dispatch-printer rules."
     [this config state bm batch parents]))
 
 (extend-protocol! IAdPrinter
