@@ -714,7 +714,21 @@
                (when (:name sc)
                  (content-header
                   config (->str (:proj-name config) " " (:name sc))))
-               (str html-inner)]]]
+               (str html-inner)
+               (when (and (:disqus config) (:disqus-id sc))
+                 [:div 'disqus_thread])
+               (when (and (:disqus config) (:disqus-id sc))
+                 [:script
+                  (->str
+                   "var disqus_shortname = '" (:disqus config)
+                   "'; var disqus_identifier = '" (:disqus-id sc)
+                   "'; (function() {
+                    var dsq = document.createElement('script');
+                    dsq.type = 'text/javascript'; dsq.async = true;
+                    dsq.src = '//' + disqus_shortname +
+                              '.disqus.com/embed.js';
+                    (document.getElementsByTagName('head')[0] ||
+                     document.getElementsByTagName('body')[0]).appendChild(dsq);})();")])]]]
             [:script "window.onload = function() {document.getElementById('dd-focus').focus();}"])
            ad-out (print asciidoc out-header out-content)
            html-out (print convert ad-out)
