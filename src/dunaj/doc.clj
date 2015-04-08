@@ -540,10 +540,12 @@
         (fn [{:keys [url name icon]}]
           (let [c (if (= name cur) [:dd-mmlink :dd-mmcur] :dd-mmlink)]
             [:a {:class c :href url}
-             [:i {:class [:fa icon :dd-mmsh]}] " " name]))]
+             [:i {:class [:fa icon :dd-mmsh]}] " "
+             [:span name]]))]
     [:header {:id :dd-header}
      [:div 'dd-logo
-      [:a {:href proj-url} [:img {:src logo-url}] proj-name]]
+      [:a {:href proj-url} 
+       [:img {:src logo-url}] proj-name]]
      (apply ->vec :div 'dd-mmenu (map print-item header-menu))]))
 
 (defn content-header
@@ -560,7 +562,8 @@
         [:div :details
          "Copyright © " (:copy-years config) " &nbsp;"
          (str (map pa (or (:authors ns-meta) (:authors config))))
-         [:span 'revdate (->str "version " cv)]
+         (when-not (empty? cv)
+           [:span 'revdate (->str "version " cv)])
          (when (and ns-sym (not (empty? (protocols ns-sym))))
            [:div 'dd-switch
             [:i {:class [:fa :fa-fw :fa-info-circle]}]
@@ -690,8 +693,10 @@
      (println! "Generating" (:filename x) "static page")
      (gen-static config x)))
   ([config sc]
-     (let [title (->str (:proj-name config) " " (:name sc))
-           out-header (assoc default-header :title title)
+   (let [title (if (:no-doc-title config)
+                 (:name sc)
+                 (->str (:proj-name config) " " (:name sc)))
+         out-header (assoc default-header :title title)
            inner-header (assoc default-header
                           :no-header-footer true
                           :noheader true
@@ -713,7 +718,11 @@
                ;; original asciidoc header is hidden with css
                (when (:name sc)
                  (content-header
-                  config (->str (:proj-name config) " " (:name sc))))
+                  config 
+                  (if (:no-doc-title config)
+                    (:name sc)
+                    (->str (:proj-name config) " " (:name sc)))
+                  ))
                (str html-inner)
                (when (and (:disqus config) (:disqus-id sc))
                  [:div 'disqus_thread])
