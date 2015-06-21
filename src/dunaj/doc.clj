@@ -558,6 +558,8 @@
            ns-meta (when ns-sym (dn/meta ns-sym))
            pa #(->str "<span class=\"author\">" % "</span><br>")]
        [:div 'header
+        (when (:teaser config)
+          [:div 'teaser (:teaser config)])
         [:h1 'dd-top n (when ns-sym (if spi? " SPI" " API"))]
         [:div :details
          "Copyright © " (:copy-years config) " &nbsp;"
