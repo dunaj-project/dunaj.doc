@@ -13,21 +13,22 @@
 (ns dunaj.doc
   "Dunaj documentation facilities."
   {:authors ["Jozef Wagner"]}
-  (:api dunaj)
-  (:require
-   [dunaj.boolean :refer [xor]]
-   [dunaj.string :as ds]
-   [dunaj.identifier :refer [named?]]
-   [dunaj.namespace :as dn :refer [publics]]
-   [dunaj.state.var :refer [find-var]]
-   [dunaj.coll.recipe :refer [concat*]]
-   [dunaj.coll.util :refer [prewalk-replace unpacked prewalk]]
-   [dunaj.macro :refer [macro?]]
-   [dunaj.format.helper :refer [string-to-batch! string-cat-batch!]]
-   [dunaj.format.clj :refer [pretty-clj]]
-   [dunaj.resource.host :refer [coll-reader coll-writer]]
-   [dunaj.format.asciidoc :refer [h2 h3 convert asciidoc pass-html]]))
+  (:require [dunaj.core :refer [dunaj-ns]]))
 
+(dunaj-ns
+ (:require
+  [dunaj.boolean :refer [xor]]
+  [dunaj.string :as ds]
+  [dunaj.identifier :refer [named?]]
+  [dunaj.namespace :as dn :refer [publics]]
+  [dunaj.state.var :refer [find-var]]
+  [dunaj.coll.recipe :refer [concat*]]
+  [dunaj.coll.util :refer [prewalk-replace unpacked prewalk]]
+  [dunaj.macro :refer [macro?]]
+  [dunaj.format.helper :refer [string-to-batch! string-cat-batch!]]
+  [dunaj.format.clj :refer [pretty-clj]]
+  [dunaj.resource.host :refer [coll-reader coll-writer]]
+  [dunaj.format.asciidoc :refer [h2 h3 convert asciidoc pass-html]]))
 
 ;;;; Implementation details
 

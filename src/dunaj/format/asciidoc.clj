@@ -13,16 +13,18 @@
 (ns dunaj.format.asciidoc
   "Asciidoc printer. Rudimentary features only."
   {:authors ["Jozef Wagner"]}
-  (:api dunaj :exclude [print! section quote])
-  (:require [dunaj.host :refer [keyword->class]]
-            [dunaj.identifier :refer [named?]]
-            [dunaj.format :refer [IPrinterFactory]]
-            [dunaj.format.helper :refer [string-to-batch!]]
-            [dunaj.format.printer :refer
-             [IContainerPrinterMachine IPrinterMachineFactory
-              printer-engine print!]]
-            [dunaj.resource.host :refer [coll-reader coll-writer]]))
+  (:require [dunaj.core :refer [dunaj-ns]]))
 
+(dunaj-ns
+ (:refer-dunaj :exclude [print! section quote])
+ (:require [dunaj.host :refer [keyword->class]]
+           [dunaj.identifier :refer [named?]]
+           [dunaj.format :refer [IPrinterFactory]]
+           [dunaj.format.helper :refer [string-to-batch!]]
+           [dunaj.format.printer :refer
+            [IContainerPrinterMachine IPrinterMachineFactory
+                printer-engine print!]]
+           [dunaj.resource.host :refer [coll-reader coll-writer]]))
 
 ;;;; Implementation details
 

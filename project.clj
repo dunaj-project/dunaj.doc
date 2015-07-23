@@ -4,5 +4,7 @@
   :license {:name "Eclipse Public License"
             :url "http://www.eclipse.org/legal/epl-v10.html"}
   :global-vars {*warn-on-reflection* true}
-  :dependencies [[org.dunaj/dunaj "0.6.0"]
-                 [org.asciidoctor/asciidoctorj "1.5.2"]])
+  :profiles {:provided
+             {:dependencies
+              [[org.dunaj/dunaj "0.7.0-SNAPSHOT"]]}}
+  :dependencies [[org.asciidoctor/asciidoctorj "1.5.2"]])
