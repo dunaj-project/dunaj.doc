@@ -13,6 +13,7 @@
 (ns dunaj.format.asciidoc
   "Asciidoc printer. Rudimentary features only."
   {:authors ["Jozef Wagner"]}
+  #?(:dunaj (:api dunaj :exclude [print! section quote]))
   (:require [dunaj.core :refer [dunaj-ns]]))
 
 (dunaj-ns
@@ -28,19 +29,19 @@
 
 ;;;; Implementation details
 
-(defn ^:private mname :- (Maybe String)
+(defn mname :- (Maybe String)
   "Returns name of `_x_`, or nil if `_x_` is `nil`."
   [x :- (Maybe INamed)]
   (if (named? x) (name x) x))
 
-(defn ^:private attr->str
+(defn attr->str
   [k v]
   (when v
     (let [v (provide-sequential v)
           vs (interpose \space (map mname v))]
       (->str (mname k) "=\"" (str vs) "\""))))
 
-(defn ^:private m->str
+(defn m->str
   ([m] (m->str m nil))
   ([m ex]
      (let [ms (map attr->str (unpacked (apply dissoc m ex)))]
@@ -60,7 +61,7 @@
   (-print-between! [this bm batch parents]
     (print! batch bm state \newline)))
 
-(defn ^:private print-icon
+(defn print-icon
   [config state m]
   (string-to-batch!
    (->str "icon:" (name (:style m)) (m->str m #{:style :type}))))
@@ -191,7 +192,7 @@
 
 ;;; Converter
 
-(defn ^:private ad->html*
+(defn ad->html*
   [coll o]
   (let [[wr ocoll] (coll-writer)
         cr (coll-reader coll)
@@ -200,7 +201,7 @@
     (.close ^java.io.Writer wr)
     ocoll))
 
-(defn ^:private ad->html
+(defn ad->html
   [coll o]
   (let [ad (org.asciidoctor.Asciidoctor$Factory/create)]
     (.render ad (str coll) ^java.util.Map o)))
@@ -232,6 +233,7 @@
 ;;;; Public API
 
 (defn block
+  {:added "1.0"}
   [style opts contents]
   (let [o (cond (map? opts) opts
                 (nil? opts) {}
@@ -242,106 +244,135 @@
               :content (vec contents)})))
 
 (defn section
+  {:added "1.0"}
   [level opts title]
   (merge opts {:type :section :level level} {:title title}))
 
 (defn h1
+  {:added "1.0"}
   ([title] (h1 nil title))
   ([opts title] (section 1 opts title)))
 
 (defn h2
+  {:added "1.0"}
   ([title] (h2 nil title))
   ([opts title] (section 2 opts title)))
 
 (defn h3
+  {:added "1.0"}
   ([title] (h3 nil title))
   ([opts title] (section 3 opts title)))
 
 (defn h4
+  {:added "1.0"}
   ([title] (h4 nil title))
   ([opts title] (section 4 opts title)))
 
 (defn h5
+  {:added "1.0"}
   ([title] (h5 nil title))
   ([opts title] (section 5 opts title)))
 
 (defn h6
+  {:added "1.0"}
   ([title] (h6 nil title))
   ([opts title] (section 6 opts title)))
 
 (defn tip
+  {:added "1.0"}
   [opts & contents]
   (block :TIP opts contents))
 
 (defn note
+  {:added "1.0"}
   [opts & contents]
   (block :NOTE opts contents))
 
 (defn important
+  {:added "1.0"}
   [opts & contents]
   (block :IMPORTANT opts contents))
 
 (defn warning
+  {:added "1.0"}
   [opts & contents]
   (block :WARNING opts contents))
 
 (defn caution
+  {:added "1.0"}
   [opts & contents]
   (block :CAUTION opts contents))
 
 (defn example
+  {:added "1.0"}
   [opts & contents]
   (block :example opts contents))
 
 (defn listing
+  {:added "1.0"}
   [opts & contents]
   (block :listing opts contents))
 
 (defn source
+  {:added "1.0"}
   [opts & contents]
   (block :source opts contents))
 
 (defn literal
+  {:added "1.0"}
   [opts & contents]
   (block :literal opts contents))
 
 (defn sidebar
+  {:added "1.0"}
   [opts & contents]
   (block :sidebar opts contents))
 
 (defn verse
+  {:added "1.0"}
   [opts & contents]
   (block :verse opts contents))
 
 (defn quote
+  {:added "1.0"}
   [opts & contents]
   (block :quote opts contents))
 
 (defn pass
+  {:added "1.0"}
   [opts & contents]
   (block :pass opts contents))
 
 (defn inline
+  {:added "1.0"}
   [opts & contents]
   (merge opts {:type :inline :content contents}))
 
 (defn icon
+  {:added "1.0"}
   [name & optmap]
   (let [m (if (single? optmap) (first optmap) (apply ->map optmap))]
     (merge m {:type :icon :style name})))
 
-(def hr "'''")
+(def hr
+  {:added "1.0"}
+  "'''")
 
-(def page-break "<<<")
+(def page-break
+  {:added "1.0"}
+  "<<<")
 
 (defn pass-html
+  {:added "1.0"}
   [& xs]
   (->str "++++\n" (str (print html xs)) "\n++++"))
 
 (def asciidoc
+  {:added "1.0"}
   "Asciidoc formatter factory."
   (->AsciidocPrinterFactory))
 
 (def convert
+  {:added "1.0"}
   (->ConverterPrinterFactory
    nil false :unsafe :html5 :article nil nil true))

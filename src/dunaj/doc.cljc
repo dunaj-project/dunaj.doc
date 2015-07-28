@@ -11,8 +11,12 @@
 ;; You must not remove this notice, or any other, from this software.
 
 (ns dunaj.doc
-  "Dunaj documentation facilities."
+  "Dunaj documentation facilities.
+
+  IMPORTANT: Clojure AOT eats ns docstring. Generate documentation
+  from non-AOTed code."
   {:authors ["Jozef Wagner"]}
+  #?(:dunaj (:api dunaj))
   (:require [dunaj.core :refer [dunaj-ns]]))
 
 (dunaj-ns
@@ -32,30 +36,30 @@
 
 ;;;; Implementation details
 
-(defn ^:private mname :- (Maybe String)
+(defn mname :- (Maybe String)
   "Returns name of `_x_`, or nil if `_x_` is `nil`."
   [x :- (Maybe INamed)]
   (if (named? x) (name x) x))
 
-(defn ^:private protocol-var? :- Boolean
+(defn protocol-var? :- Boolean
   "Returns `true` is var `_v_` holds a public protocol."
   [v :- Var]
   (boolean (and (:added (meta v)) (not (macro? v))
                 (:defprotocol (meta v))
                 (protocol? @v))))
 
-(defn ^:private protocol-method-var? :- Boolean
+(defn protocol-method-var? :- Boolean
   "Returns true is var `_v_` holds a public protocol method."
   [v :- Var]
   (boolean (:protocol (meta v))))
 
-(defn ^:private protocols :- []
+(defn protocols :- []
   "Returns collection recipe of public protocols in a given namespace
    `_ns-sym_`."
   [ns-sym :- Symbol]
   (->> ns-sym publics vals (filter protocol-var?)))
 
-(defn ^:private ns-list :- []
+(defn ns-list :- []
   "Returns collection recipe of namespace symbols sorted
    alphabetically."
   ([config :- {}]
@@ -85,17 +89,17 @@
   [ns-sym]
   (not (empty? (api-groups ns-sym))))
 
-(defn ^:private string-indent
+(defn string-indent
   [s]
   (let [cf (fn [l] (max 0 (count (take-while #(= \space %) l))))]
     (reduce min 1000 (map cf (remove empty? (rest (lines s)))))))
 
-(defn ^:private trim-max
+(defn trim-max
   [s tm]
   (let [tf #(if (blank? (take tm %)) (str (drop tm %)) %)]
     (str (interpose \newline (map tf (lines s))))))
 
-(defn ^:private doc-string
+(defn doc-string
   [s]
   (if-let [indent (string-indent s)] (trim-max s indent) s))
 
@@ -159,7 +163,7 @@
   (-> s (ds/replace ">" "&#62;") (ds/replace "<" "&#60;")
       (ds/replace "=" "&#61;") (ds/replace "-" "&#45;")))
 
-(defn ^:private strip-ns
+(defn strip-ns
   [form]
   (let [sm {'java.lang.Boolean 'Boolean}
         sym-map #(get sm % %)
@@ -454,7 +458,7 @@
                  (mapcat #(ns-nav-proto config %) pl)
                  [[:br]]))))
 
-(defn ^:private side-ns-list :- []
+(defn side-ns-list :- []
   "Returns collection recipe of namespace symbols sorted
    alphabetically with added fake namespaces where appropriate."
   [ns-list :- []]
@@ -470,7 +474,7 @@
                   [(symbol prefix) cur])))]
     (->> ns-list sort (cons nil) (partition 2 1) (mapcat lf))))
 
-(defn ^:private side-ns-item :- Any
+(defn side-ns-item :- Any
   "Returns code for one side ns item."
   [ns-sym :- Symbol, cur-ns :- Symbol, spi? :- Boolean]
   (let [n (name ns-sym)
@@ -488,7 +492,7 @@
            (dn/ns? ns-sym) [:a {:href nh} ln]
            :else ln)]))
 
-(defn ^:private side-ns-nav :- Any
+(defn side-ns-nav :- Any
   "Returns html code for doc navigation."
   [config :- {}, spi? :- Boolean, ns-sym :- Symbol]
   (let [ff #(or (ns-vars? %) (ds/index-of (name %) ".core"))
@@ -503,7 +507,7 @@
            [[:br]]]]
     (vec (concat* x))))
 
-(defn ^:private static-nav :- Any
+(defn static-nav :- Any
   "Returns code for static side nav"
   [config :- {}, ml :- [], aname :- String]
   (let [mf (fn [m]
@@ -687,9 +691,12 @@
     #_(with-scope (spit! "temp.ad" ad [:create :truncate]))
     (str (print (assoc convert :embedded? true) ad))))
 
+;;;; Public API
+
 ;;; Generators
 
 (defn gen-static
+  {:added "1.0"}
   "Generates static page."
   ([config]
    (dored [x (:static-pages config)]
@@ -754,6 +761,7 @@
          (spit! html-path html-out [:create :truncate])))))
 
 (defn gen-api-list
+  {:added "1.0"}
   "Generates API/SPI listing page"
   [config spi?]
   (let [as (if spi? " SPI" " API")
@@ -785,6 +793,7 @@
       (spit! html-path html-out [:create :truncate]))))
 
 (defn gen-api
+  {:added "1.0"}
   "Generates API/SPI page for one namespace."
   [config spi? ns-sym]
   (let [ns-name (name ns-sym)
@@ -819,10 +828,8 @@
       #_(spit! ad-path ad-out [:create :truncate])
       (spit! html-path html-out [:create :truncate]))))
 
-
-;;;; Public API
-
 (defn gen-doc
+  {:added "1.0"}
   "Generates documentation based on `_config_` map."
   ([config]
    (gen-static config)
