@@ -190,7 +190,7 @@
                         var-name))
            source-for
            #(let [np (ds/replace (ds/replace % \. \/) \- \_)]
-              (->str (:sources-url config) np ".clj"))]
+              (->str (:sources-url config) np ".clj"))] ;; TODO: extension may be .cljc or other
        (cond
         (and local? alias?) ;; local reference
         (->str "<<" (ad-munge var-name) "," (or label var-name) ">>")
